@@ -1,6 +1,13 @@
 import socket
 import threading
 import datetime
+import sys, os
+import json, struct
+
+sys.path.append(os.path.abspath(os.path.join("..")))
+
+from common.Def import MSG_HDR_LEN, MSGTYPE, INTFTYPE
+
 
 class Listener(object):
 
@@ -21,13 +28,35 @@ class Listener(object):
             threading.Thread(target = self.listenToClient, args = (client, address)).start()
             self.createlog("Opening a threaded socket for client " + str(address))
 
+    def __generate_device_reg_reply(self, reg):
+        msg = {"device_id": reg[u"device_id"], "reg_result": True, "intfs":[]}
+        for intf in reg[u"intfs"]:
+            msg["intfs"].append({"type":intf[u"type"], "typename":intf[u"typename"], "name":intf[u"name"], "ssid": "nrg-5-0000000", "channel": 11})
+        msg = json.dumps(msg)
+        msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.DEV_REG_REPLY.value, len(msg), msg)
+        return msg
+                 
+    def __receive_msg_hdr(self, sock):
+        msg_hdr = sock.recv(MSG_HDR_LEN)
+        if msg_hdr:
+            tp, length = struct.unpack("!BH", msg_hdr)
+            return (MSGTYPE(tp), length)
+        return None
+                     
+    def __process_dev_reg(self, sock, tp, length):
+        assert tp == MSGTYPE.DEV_REG
+        data = sock.recv(length)
+        reg = json.loads(data)
+        msg = self.__generate_device_reg_reply(reg)
+        return msg
+
     def listenToClient(self, client, address):
         size = 1024
         while True:
             try:
-                data = client.recv(size)
+                data = self.__receive_msg_hdr(client)
                 if data:
-                    response = data+data
+                    response = self.__process_dev_reg(client, data[0], data[1])
                     client.send(response)
                     self.createlog("Replying to " + str(address) + " with " + str(response))
                 else:
