@@ -8,6 +8,7 @@ sys.path.append(os.path.abspath(os.path.join("..")))
 
 from common.Def import MSG_HDR_LEN, MSGTYPE, INTFTYPE
 
+from optparse import OptionParser
 
 class Listener(object):
 
@@ -25,7 +26,7 @@ class Listener(object):
             client, address = self.sock.accept()
             self.createlog("Receive connection from " + str(address))
             client.settimeout(60)
-            threading.Thread(target = self.listenToClient, args = (client, address)).start()
+            print threading.Thread(target = self.listenToClient, args = (client, address)).start()
             self.createlog("Opening a threaded socket for client " + str(address))
 
     def __generate_device_reg_reply(self, reg):
@@ -60,9 +61,9 @@ class Listener(object):
                     client.send(response)
                     self.createlog("Replying to " + str(address) + " with " + str(response))
                 else:
-                    self.createlog("Opening a threaded socket for client " + str(dadress))
                     raise error('Client Disconnected')
-            except:
+            except msg:
+                print "AP_manager: error "
                 client.close()
                 return False
 
@@ -72,13 +73,23 @@ class Listener(object):
 
 
 if __name__ == "__main__":
+
+    parser = OptionParser()
+    parser.add_option("-p", "--port", dest="port_num", help="select on wich port to open the listener, default = 2311", metavar="<port>")
+    (options, args) = parser.parse_args()
+
+    port_num = options.port_num
+
+    if not port_num:
+        port_num = 2311
+
     while True:
-        port_num = raw_input("Port? ")
         try:
             port_num = int(port_num)
             break
         except ValueError:
-            pass
+            print "AP_manager:main: Invalid port number. Abort..."
+            exit(1)
 
     Listener('',port_num).listen()
 
