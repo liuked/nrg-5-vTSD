@@ -45,14 +45,16 @@ class Listener(object):
 
 if __name__ == "__main__":
 
-    port_num = 2311
-
     parser = OptionParser()
-    parser.add_option("-p", "--port", dest="port", help="select on wich port to open the listener, default = 2311", metavar="<port>")
+    parser.add_option("-p", "--port", dest="port_num", help="select on wich port to open the listener, default = 2311", metavar="<port>")
     (options, args) = parser.parse_args()
 
+    port_num = options.port_num
+
+    if not port_num:
+        port_num = 2311
+
     while True:
-        port_num = options.port
         try:
             port_num = int(port_num)
             break
