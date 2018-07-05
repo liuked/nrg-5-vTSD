@@ -1,6 +1,7 @@
 import socket
 import threading
 import datetime
+from optparse import OptionParser
 
 class Listener(object):
 
@@ -18,7 +19,7 @@ class Listener(object):
             client, address = self.sock.accept()
             self.createlog("Receive connection from " + str(address))
             client.settimeout(60)
-            threading.Thread(target = self.listenToClient, args = (client, address)).start()
+            print threading.Thread(target = self.listenToClient, args = (client, address)).start()
             self.createlog("Opening a threaded socket for client " + str(address))
 
     def listenToClient(self, client, address):
@@ -31,9 +32,9 @@ class Listener(object):
                     client.send(response)
                     self.createlog("Replying to " + str(address) + " with " + str(response))
                 else:
-                    self.createlog("Opening a threaded socket for client " + str(dadress))
                     raise error('Client Disconnected')
-            except:
+            except msg:
+                print "AP_manager: error "
                 client.close()
                 return False
 
@@ -43,13 +44,21 @@ class Listener(object):
 
 
 if __name__ == "__main__":
+
+    port_num = 2311
+
+    parser = OptionParser()
+    parser.add_option("-p", "--port", dest="port", help="select on wich port to open the listener, default = 2311", metavar="<port>")
+    (options, args) = parser.parse_args()
+
     while True:
-        port_num = raw_input("Port? ")
+        port_num = options.port
         try:
             port_num = int(port_num)
             break
         except ValueError:
-            pass
+            print "AP_manager:main: Invalid port number. Abort..."
+            exit(1)
 
     Listener('',port_num).listen()
 
