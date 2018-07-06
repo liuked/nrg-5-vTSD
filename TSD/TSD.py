@@ -13,6 +13,7 @@ import socket
 import struct
 from common.Def import INTFTYPE, MSG_HDR_LEN, MSGTYPE
 from IntfOpsDef import WiFiIntfOps, IntfOps
+from LED_manager import LedManager, LED
 
 
 class TSD(object):
@@ -79,9 +80,9 @@ class TSD(object):
 		assert intf_type in INTFTYPE
 		if intf_type not in self.intf_mods:
 			self.intf_mods[intf_type] = module_ops
-			logging.info("TSD register the {} module".format(module_ops.intf_type_str))
+			logging.info("TSD: registering the {} module".format(module_ops.intf_type_str))
 		else:
-			logging.warning("TSD try to register the {} module that was registered".format(module_ops.intf_type_str))
+			logging.warning("TSD: try to register the {} module that was registered".format(module_ops.intf_type_str))
 
 	def __connect_to_vTSD(self):
 		"""
@@ -107,9 +108,14 @@ class TSD(object):
 
 	def __process_dev_reg_reply(self, sock, tp, length):
 		assert tp == MSGTYPE.DEV_REG_REPLY
+
 		reply = json.loads(sock.recv(length))
 		assert reply[u"device_id"]==self.device_id
 		if reply[u"reg_result"]==True:
+
+			indicators.led_turn_on("Y1")
+			indicators.led_start_blinking("G1")
+
 			#open hotspot
 			for intf in reply[u"intfs"]:
 				intf_type = INTFTYPE(intf[u"type"])
@@ -125,13 +131,23 @@ class TSD(object):
 	def start_service(self):
 		#connect to vTSD
 		sock = self.__connect_to_vTSD()
+
 		
 		msg = self.__generate_device_register_msg()
 		sock.send(msg)
-	
+		indicators.led_start_blinking("Y1")
+
 		tp, length = self.__receive_msg_hdr(sock)
 		ret = self.__process_dev_reg_reply(sock, tp, length)
-			
+
+		if ret:
+			indicators.led_turn_on("G1")
+		else:
+			indicators.led_turn_off("G1")
+			indicators.led_lamp("R1", (0.25,0.25,0.25))
+
+
+
 		sock.close()
 
 		return ret
@@ -157,6 +173,15 @@ if __name__ == "__main__":
 	#print wifi_ops.scan()
 	#wifi_ops.open(interface="wlan0", ssid="nrg-5-000000", channel="11")
 	#wifi_ops.close(interface="wlan0")
+
+	indicators = LedManager([("G1",40,LED.DRAIN),
+							  ("Y1",38,LED.DRAIN),
+							  ("R1",36,LED.DRAIN),
+							  ("G2",37,LED.DRAIN),
+							  ("Y2",35,LED.DRAIN),
+							  ("R2",33,LED.DRAIN)])
+
+	indicators.turn_on("Y1")
 
 	tsd = TSD(intfops=[WiFiIntfOps()])
 	while tsd.start_service() == False:
