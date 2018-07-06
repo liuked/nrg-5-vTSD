@@ -34,7 +34,7 @@ class WiFiIntfOps(IntfOps):
         for intf in intf_list:
             sh_ret, phy = cmds.getstatusoutput("iw %s info | grep wiphy | awk '{print $2}'" % intf)
             assert sh_ret==0
-            sh_ret, ap_support = cmds.getstatusoutput("iw phy{} info | grep '\* AP' | tee".format(phy))
+            sh_ret, ap_support = cmds.getstatusoutput("iw phy{} info | grep '\* AP$' | tee".format(phy))
             assert sh_ret==0
             if ap_support:
                 return intf
