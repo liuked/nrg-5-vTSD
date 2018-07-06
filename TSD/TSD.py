@@ -103,12 +103,22 @@ class TSD(object):
     def __load_vTSD_info(self, **kwargs):
         
         # FIXME: currently, we should fixed url for vTSD, and we should setup manual dns-mapping in /etc/hosts
-        self.vTSD_url = "nrg5.vtsd.fr" 
-        self.vTSD_port = 6666
-        if "vTSD_url" in kwargs:
-            self.vTSD_url = kwargs["vTSD_url"]
-        if "vTSD_port" in kwargs:
-            self.vTSD_port = kwargs["vTSD_port"]
+        vTSD_config_path = "/etc/nrg-5/vTSD.json"
+        if "vTSD_config" in kwargs:
+            vTSD_config_path = kwargs["vTSD_config"]
+
+        with open(vTSD_config_path, "r") as f:
+            vTSD_config = json.load(f)
+
+        self.vTSD_url = vTSD_config[u"url"].encode("utf-8")
+        self.vTSD_port = vTSD_config[u"port"]
+
+        # remove old dns entry
+        assert os.system('sed -i "/.*{}.*/d" /etc/hosts'.format(self.vTSD_url))==0
+
+        if vTSD_config["url_resolv"] == "manual":
+            #add dns mapping to /etc/hosts
+            assert os.system('echo "{}    {}" >> /etc/hosts'.format(vTSD_config["ip"], self.vTSD_url))==0
 
         self.vTSD_ip = socket.gethostbyname(self.vTSD_url)
 
