@@ -12,6 +12,7 @@ from common.Def import MSG_HDR_LEN, MSGTYPE, INTFTYPE
 class Listener(object):
 
     def __init__(self, host, port):
+        self.ssid = 0
         self.host = host
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -31,9 +32,10 @@ class Listener(object):
     def __generate_device_reg_reply(self, reg):
         msg = {"device_id": reg[u"device_id"], "reg_result": True, "intfs":[]}
         for intf in reg[u"intfs"]:
-            msg["intfs"].append({"type":intf[u"type"], "typename":intf[u"typename"], "name":intf[u"name"], "ssid": "nrg-5-0000000", "channel": 11})
+            msg["intfs"].append({"type":intf[u"type"], "typename":intf[u"typename"], "name":intf[u"name"], "ssid": "nrg-5-{:0>6}".format(self.ssid), "channel": 11})
         msg = json.dumps(msg)
         msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.DEV_REG_REPLY.value, len(msg), msg)
+        self.ssid += 1
         return msg
                  
     def __receive_msg_hdr(self, sock):
@@ -81,8 +83,4 @@ if __name__ == "__main__":
             pass
 
     Listener('',port_num).listen()
-
-
-
-
 
