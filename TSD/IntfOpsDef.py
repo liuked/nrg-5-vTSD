@@ -8,7 +8,7 @@ import struct
 import re
 import os
 import logging
-from common.Def import INTFTYPE
+from common.Def import INTFTYPE, NRG5_SSID_PREFIX
 
 sys.path.append(os.path.abspath(os.path.join("..")))
 
@@ -29,6 +29,18 @@ class WiFiIntfOps(IntfOps):
         self.intf_type = INTFTYPE.WIFI
         self.intf_type_str = "WiFi"
 
+    def __select_intf_with_ap_support(self, intf_list):
+        
+        for intf in intf_list:
+            sh_ret, phy = cmds.getstatusoutput("iw %s info | grep wiphy | awk '{print $2}'" % intf)
+            assert sh_ret==0
+            sh_ret, ap_support = cmds.getstatusoutput("iw phy{} info | grep '\* AP' | tee".format(phy))
+            assert sh_ret==0
+            if ap_support:
+                return intf
+        return None
+
+
     def scan(self, *args, **kwargs):
         """
         Description: select one spare WiFi interface, and 
@@ -36,15 +48,22 @@ class WiFiIntfOps(IntfOps):
         """
         sh_ret, intf_list = cmds.getstatusoutput("ifconfig -a | grep wlan | grep -v UP | awk -F: '{print $1}'")
         assert sh_ret==0
-        intf_list = intf_list.split("\n")
-        if len(intf_list) == 0:
+        if intf_list == "":
             return None
-        
-        intf = intf_list[0]
+
+        intf_list = intf_list.split("\n")
+        intf = self.__select_intf_with_ap_support(intf_list)
+
+        if intf == None:
+            return None
+
         sh_ret, bss_list = cmds.getstatusoutput('ifconfig {} up && iw dev {} scan | egrep -i "(^BSS)|(DS Parameter set: channel)|(signal:)|(SSID:)" && ifconfig {} down'.format(intf, intf, intf))
         assert sh_ret==0
 
         bss_list_str = bss_list.split("\n")
+        if bss_list == "":
+            bss_list_str = []
+
         bss_list = []
 
         for bss_index in range(0, len(bss_list_str), 4):
@@ -56,7 +75,7 @@ class WiFiIntfOps(IntfOps):
             bss_list.append({"mac":bss_mac, "signal":bss_ss, "ssid": bss_ssid, "channel":bss_chl})
 
         channel_usage = {}
-        nrg5_bss_list = filter(lambda e:"nrg-5" in e["ssid"], bss_list)
+        nrg5_bss_list = filter(lambda e:NRG5_SSID_PREFIX in e["ssid"], bss_list)
         for bss in bss_list:
             channel = bss["channel"]
             if channel in channel_usage:
@@ -89,7 +108,6 @@ class WiFiIntfOps(IntfOps):
         subnet_str = socket.inet_ntoa(struct.pack("!I", subnet))
 
         return (ip_str, netmask_str, subnet_str, netmask_len)
-
 
     def open(self, *args, **kwargs):
         """

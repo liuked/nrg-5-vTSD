@@ -12,6 +12,7 @@ import struct
 from common.Def import INTFTYPE, MSG_HDR_LEN, MSGTYPE
 from IntfOpsDef import WiFiIntfOps, IntfOps
 
+
 class TSD(object):
 
     def __init__(self, *args, **kwargs):

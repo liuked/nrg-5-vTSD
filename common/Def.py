@@ -3,6 +3,8 @@
 
 from enum import Enum
 
+NRG5_SSID_PREFIX="nrg-5-"
+
 class INTFTYPE(Enum):
 	WIFI = 1
 
