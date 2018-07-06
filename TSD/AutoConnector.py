@@ -21,6 +21,7 @@ class WiFiAutoConnector(AutoConnector):
 
     def __init__(self, *args, **kwargs):
         self.password = "upmc75005"
+        self.interface = None
         if "password" in kwargs:
             self.password = kwargs["password"]
 
@@ -44,6 +45,10 @@ class WiFiAutoConnector(AutoConnector):
             if ap_support == "":
                 return intf
         return intf_list[0]
+
+    def disconnect(self):
+        if self.interface:
+            assert os.system("ifdown {}".format(interface))
 
     def try_to_connect(self):
 
@@ -87,6 +92,8 @@ class WiFiAutoConnector(AutoConnector):
             
             #bring up the interface
             assert os.system("ifup {}".format(intf))==0
+
+            self.interface = intf
 
         return ssid != None
 
