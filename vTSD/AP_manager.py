@@ -26,7 +26,7 @@ class Listener(object):
             client, address = self.sock.accept()
             self.createlog("Receive connection from " + str(address))
             client.settimeout(60)
-            print threading.Thread(target = self.listenToClient, args = (client, address)).start()
+            print threading.Thread(target = self.__listen_to_client, args = (client, address)).start()
             self.createlog("Opening a threaded socket for client " + str(address))
 
     def __generate_device_reg_reply(self, reg):
@@ -51,17 +51,17 @@ class Listener(object):
         msg = self.__generate_device_reg_reply(reg)
         return msg
 
-    def listenToClient(self, client, address):
+    def __listen_to_client(self, client, address):
         size = 1024
         while True:
             try:
-                data = self.__receive_msg_hdr(client)
+                data = self.__receive_msg_hdr(client)  # data[0] = msg type; data[1] = msg length
                 if data:
                     response = self.__process_dev_reg(client, data[0], data[1])
                     client.send(response)
                     self.createlog("Replying to " + str(address) + " with " + str(response))
                 else:
-                    raise error('Client Disconnected')
+                    raise Exception, ('Client Disconnected')
             except msg:
                 print "AP_manager: error "
                 client.close()
