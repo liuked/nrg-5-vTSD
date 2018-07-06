@@ -67,7 +67,7 @@ class LedManager(object):
         IO.setmode(IO.BOARD)
         self.__leds = {}
         for led in leds:
-            self.add_led(led[1], led[2], led[3])
+            self.add_led(led[0], led[1], led[2])
 
     def add_led(self, name, pin, conf):
         assert name not in self.__leds
