@@ -49,7 +49,7 @@ class TSD(object):
         assert sh_ret == 0
 
         netmask_len = self.subnet_len
-        gw_ip_uint = struct.unpack("!I", socket.inet_aton(gw_ip))
+        gw_ip_uint = struct.unpack("!I", socket.inet_aton(gw_ip))[0]
         netmask = (0xffffffff << (32-netmask_len)) & 0xffffffff
         
         temp = (gw_ip_uint >> (32-netmask_len)) + 1
