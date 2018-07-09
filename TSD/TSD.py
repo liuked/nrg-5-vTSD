@@ -9,11 +9,52 @@ import logging
 import json
 import socket
 import struct
+import threading
 from common.Def import INTFTYPE, MSG_HDR_LEN, MSGTYPE
+from common.Service import Service
 from IntfOpsDef import WiFiIntfOps, IntfOps
+from bitarray import bitarray
 
 
 class TSD(object):
+
+    class DNATPortPool(object):
+
+        def __init__(self, used_ports = []):
+            # do NOT use 0-1023
+            self.curr_port = 0
+            self.port_used = bitarray(65536 - 1024)
+            for port in used_ports:
+                self.port_used[port] = 1
+            self.lock = threading.Lock()
+
+        def get_port(self):
+            self.lock.acquire()
+
+            port_start = self.curr_port
+            while self.port_used[self.curr_port]:
+                self.curr_port = (self.curr_port + 1) % (65536 - 1024)
+                if self.curr_port == port_start:
+                    raise Exception, "No free ports can be used for DNAT"
+
+            self.port_used[self.curr_port] = 1
+            port_ret = self.curr_port
+            self.curr_port = (self.curr_port + 1) % (65536 - 1024)
+            self.lock.release()
+            return port_ret
+        
+        def free_port(self, port):
+            self.lock.acquire()
+            assert self.port_used[port]==1
+            self.port_used[port] = 0
+            self.lock.release()
+
+        def reserve_port(self, port):
+            self.lock.acquire()
+            assert self.port_used[port]==0
+            self.port_used[port]=1
+            self.lock.release()
+
 
     def __init__(self, *args, **kwargs):
         """
@@ -31,6 +72,7 @@ class TSD(object):
         self.is_5g_gw = self.__is_5G_gateway(**kwargs)
         self.__prepare_ap_address_pool(self.is_5g_gw)
         self.__load_vTSD_info(**kwargs)
+        self.dnat_port_pool = TSD.DNATPortPool()
 
     def __prepare_ap_address_pool(self, is_5g_gw):
         """
@@ -190,7 +232,13 @@ class TSD(object):
         assert reply[u"device_id"]==self.device_id
         logging.info("DEV_REG_FAILED({}): {}".format(reply["error_type"], reply["error_msg"]))
 
-    def start_service(self):
+    def start_service(self, services=[]):
+        
+        #expose services to vTSD at first
+        for s in services:
+            if not self.__register_service(s):
+                raise Exception, "Unable to register service {} on port {}".format(s.name, s.port)
+
         #connect to vTSD
         sock = self.__connect_to_vTSD()
         
@@ -202,6 +250,7 @@ class TSD(object):
         tp, length = self.__receive_msg_hdr(sock)
  
         if tp == MSGTYPE.DEV_REG_SUCCESS:
+            self.__launch_svs_reg_forwarder()
             self.__process_dev_reg_success(sock, tp, length)
             ret = True
         elif tp == MSGTYPE.DEV_REG_FAILED:
@@ -215,17 +264,151 @@ class TSD(object):
         return ret
 
     def stop_service(self):
-        
         for intf in self.active_intfs:
             self.intf_mods[intf["type"]].close(interface=intf["name"])
+        self.stop_fwd = True
+        self.fwd_server.join()
 
-    def baba(self):
-        pass
-        #register me to vTSD
-    
-        #start forwarding service for downstream device
+    def __forwarder_process_svs_reg(self, sock, tp, length):
+        msg = json.loads(sock.recv(length))
+        upstream_port = self.dnat_port_pool.get_port()
 
-        #exposure my service
+        upstream_intf_ip = None
+        target_ip = None
+        
+        sh_ret, upstream_intf = cmds.getstatusoutput("ip route | grep default | awk -F\"dev \" '{print $2}' | awk '{print $1}'")
+        assert sh_ret==0
+        sh_ret, upstream_intf_ip = cmds.getstatusoutput("ifconfig %s | grep \"inet \" | awk '{print $2}'" % upstream_intf)
+        assert sh_ret==0
+
+        if self.is_5g_gw:
+            target_ip = self.vTSD_ip
+        else:
+            sh_ret, target_ip = cmds.getstatusoutput("ip route | grep default | gawk --re-interval '{match($0,/([0-9]{1,3}\.){3}[0-9]{1,3}/,a) ;print a[0]}'")
+            assert sh_ret==0
+
+        #connect to target
+        upstream_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        upstream_sock.connect((target_ip, self.vTSD_port))
+
+        msg["dnat_chain"].append("{}:{}".format(upstream_intf_ip, upstream_port))
+        msg = json.dumps(msg)
+        msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.SVS_REG.value, len(msg), msg)
+        upstream_sock.send(msg)
+        
+        #wait SVS_REG_SUCCESS or SVS_REG_FAILED
+        tp, length = self.__receive_msg_hdr(upstream_sock)
+        if tp == MSGTYPE.SVS_REG_SUCCESS:
+            msg = json.loads(upstream_sock.recv(length))
+            #install DNAT rule
+            dnat_ip, dnat_port = msg["dnat_chain"][-1].split(":")
+            dnat_intf = upstream_intf
+            assert os.system("iptables -t nat -A PREROUTING -i {} -p {} --dport {} -j DNAT --to-destination {}".format(
+                        dnat_intf, msg["service_proto"], dnat_port, msg["dnat_chain"][-2]))==0
+            del msg["dnat_chain"][-1]
+
+            #forward to downstream device
+            msg = json.dumps(msg)
+            msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.SVS_REG_SUCCESS.value, len(msg), msg)
+            sock.send(msg)
+
+        elif tp == MSGTYPE.SVS_REG_FAILED:
+            msg = json.loads(upstream_sock.recv(length))
+            #release used port
+            dnat_ip, dnat_port = msg["dnat_chain"][-1].split(":")
+            self.dnat_port_pool.free_port(int(dnat_port))
+            del msg["dnat_chain"][-1]
+
+            #forward to downstream device
+            msg = json.dumps(msg)
+            msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.SVS_REG_FAILED.value, len(msg), msg)
+            sock.send(msg)
+        else:
+            raise Exception, "received unknown message type from upstream device during __forwarder_process_svs_reg()"
+
+        upstream_sock.close()
+
+    def __forward_svs_reg(self, sock, addr):
+        #recv registration reply from vTSD
+        tp, length = self.__receive_msg_hdr(sock)
+        if tp == MSGTYPE.SVS_REG:
+            self.__forwarder_process_svs_reg(sock, tp, length)   
+        else:
+            raise Exception, "received unknown message type from downstream device during __forward_svs_reg()"
+        sock.close()
+
+    def __forwarder_server(self):
+        self.fwd_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.fwd_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #use the same port as vTSD for forwarder server
+        #this port is unrelated to DNAT, because only downstream devices want to connect me
+        self.fwd_sock.bind(("", self.vTSD_port))
+        self.fwd_sock.listen(10)
+        logging.info("service forwarder running on port {}".format(self.vTSD_port))
+        while self.stop_fwd == False:
+            cli_sock, addr = self.fwd_sock.accept()
+            loggin.info("forwarder: accept connection from {}".format(str(addr)))
+            threading.Thread(target=self.__forward_svs_reg, args = (sock, addr)).start()
+
+    def __launch_svs_reg_forwarder(self):
+        self.stop_fwd = False
+        self.fwd_server = threading.Thread(target=self.__forwarder_server)
+        self.fwd_server.start()
+
+    def __process_svs_reg_success(self, sock, tp, length):
+        reply = json.loads(sock.recv(length))
+        assert reply[u"device_id"]==self.device_id
+        logging.info("SVS_REG_SUCCESS!")
+
+    def __process_svs_reg_failed(self, sock, tp, length):
+        reply = json.loads(sock.recv(length))
+        assert reply[u"device_id"]==self.device_id
+        logging.info("SVS_REG_FAILED!")
+
+    def __register_service(self, service):
+        upstream_intf_ip = None
+        target_ip = None
+        
+        sh_ret, upstream_intf = cmds.getstatusoutput("ip route | grep default | awk -F\"dev \" '{print $2}' | awk '{print $1}'")
+        assert sh_ret==0
+        sh_ret, upstream_intf_ip = cmds.getstatusoutput("ifconfig %s | grep \"inet \" | awk '{print $2}'" % upstream_intf)
+        assert sh_ret==0
+
+        if self.is_5g_gw:
+            target_ip = self.vTSD_ip
+        else:
+            sh_ret, target_ip = cmds.getstatusoutput("ip route | grep default | gawk --re-interval '{match($0,/([0-9]{1,3}\.){3}[0-9]{1,3}/,a) ;print a[0]}'")
+            assert sh_ret==0
+
+        #connect to target
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((target_ip, self.vTSD_port))
+
+        #send SVS_REG
+        msg = {"device_id":self.device_id, "credential":self.credential, 
+            "dnat_chain":["{}:{}".format(upstream_intf_ip, service.port)], 
+            "service_type":service.type, "service_name":service.name, 
+            "service_description":service.description, "service_proto":service.proto}
+        msg = json.dumps(msg)
+        msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.SVS_REG.value, len(msg), msg)
+        sock.send(msg)
+
+        #wait SVS_REG_SUCCESS or SVS_REG_FAILED
+        tp, length = self.__receive_msg_hdr(sock)
+        if tp == MSGTYPE.SVS_REG_SUCCESS:
+            self.__process_svs_reg_success(sock, tp, length)
+            self.dnat_port_pool.reserve_port(service.port)
+            ret = True
+        elif tp == MSGTYPE.SVS_REG_FAILED:
+            self.__process_svs_reg_failed(sock, tp, length)
+            ret = False
+        else:
+            raise Exception, "received unknown message type during register_service()"
+
+        sock.close()
+
+        return ret
+            
 
 #testing code
 if __name__ == "__main__":

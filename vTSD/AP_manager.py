@@ -59,13 +59,27 @@ class Listener(object):
         msg = self.__generate_device_reg_reply(reg)
         return msg
 
+    def __process_svs_reg(self, sock, tp, length):
+        data = sock.recv(length)
+        reg = json.loads(data)
+        del reg["credential"]
+        msg = json.dumps(reg)
+        msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.SVS_REG_SUCCESS.value, len(msg), msg)
+        return msg
+
     def listenToClient(self, client, address):
         size = 1024
         while True:
             try:
                 data = self.__receive_msg_hdr(client)
                 if data:
-                    response = self.__process_dev_reg(client, data[0], data[1])
+                    tp, length = data
+                    if tp == MSGTYPE.DEV_REG:
+                        response = self.__process_dev_reg(client, tp, length)
+                    elif tp == MSGTYPE.SVS_REG:
+                        response = self.__process_svs_reg(client, tp, length)
+                    else:
+                        logging.error("unknown message")
                     client.send(response)
                     self.createlog("Replying to " + str(address) + " with " + str(response))
                 else:

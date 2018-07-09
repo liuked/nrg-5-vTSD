@@ -6,6 +6,7 @@ import sys, os
 sys.path.append(os.path.abspath(os.path.join("..")))
 
 from common.Def import INTFTYPE, MSG_HDR_LEN, MSGTYPE
+from common.Service import Service
 from TSD import TSD
 from AutoConnector import WiFiAutoConnector
 from IntfOpsDef import WiFiIntfOps
@@ -23,8 +24,10 @@ def main(*args, **kwargs):
         time.sleep(3)
 
     tsd = TSD(intfops=[WiFiIntfOps()])
+
+    s = Service(1, "Web", "Web", 8080, "tcp")
     
-    while tsd.start_service() == False:
+    while tsd.start_service([s]) == False:
         #retry after 3s
         logging.warning("TSD: fail to become hotspot, will try again after 3s")
         time.sleep(3)
