@@ -24,7 +24,9 @@ class TSD(object):
             # do NOT use 0-1023
             self.curr_port = 0
             self.port_used = bitarray(65536 - 1024)
+            self.port_used.setall(0)
             for port in used_ports:
+                port -= 1024
                 self.port_used[port] = 1
             self.lock = threading.Lock()
 
@@ -41,15 +43,18 @@ class TSD(object):
             port_ret = self.curr_port
             self.curr_port = (self.curr_port + 1) % (65536 - 1024)
             self.lock.release()
-            return port_ret
+
+            return port_ret + 1024
         
         def free_port(self, port):
+            port -= 1024
             self.lock.acquire()
             assert self.port_used[port]==1
             self.port_used[port] = 0
             self.lock.release()
 
         def reserve_port(self, port):
+            port -= 1024
             self.lock.acquire()
             assert self.port_used[port]==0
             self.port_used[port]=1
@@ -234,11 +239,6 @@ class TSD(object):
 
     def start_service(self, services=[]):
         
-        #expose services to vTSD at first
-        for s in services:
-            if not self.__register_service(s):
-                raise Exception, "Unable to register service {} on port {}".format(s.name, s.port)
-
         #connect to vTSD
         sock = self.__connect_to_vTSD()
         
@@ -250,6 +250,10 @@ class TSD(object):
         tp, length = self.__receive_msg_hdr(sock)
  
         if tp == MSGTYPE.DEV_REG_SUCCESS:
+            #expose services to vTSD at first
+            for s in services:
+                if not self.__register_service(s):
+                    raise Exception, "Unable to register service {} on port {}".format(s.name, s.port)
             self.__launch_svs_reg_forwarder()
             self.__process_dev_reg_success(sock, tp, length)
             ret = True
@@ -266,7 +270,7 @@ class TSD(object):
     def stop_service(self):
         for intf in self.active_intfs:
             self.intf_mods[intf["type"]].close(interface=intf["name"])
-        self.stop_fwd = True
+        self.fwd_server_stop = True
         self.fwd_server.join()
 
     def __forwarder_process_svs_reg(self, sock, tp, length):
@@ -344,16 +348,21 @@ class TSD(object):
         #this port is unrelated to DNAT, because only downstream devices want to connect me
         self.fwd_sock.bind(("", self.vTSD_port))
         self.fwd_sock.listen(10)
+        self.fwd_sock.settimeout(5)
         logging.info("service forwarder running on port {}".format(self.vTSD_port))
-        while self.stop_fwd == False:
-            cli_sock, addr = self.fwd_sock.accept()
-            loggin.info("forwarder: accept connection from {}".format(str(addr)))
-            threading.Thread(target=self.__forward_svs_reg, args = (sock, addr)).start()
+        while not self.fwd_server_stop:
+            try:
+                cli_sock, addr = self.fwd_sock.accept()
+                cli_sock.setblocking(1)
+                loggin.info("forwarder: accept connection from {}".format(str(addr)))
+                threading.Thread(target=self.__forward_svs_reg, args = (sock, addr)).start()
+            except socket.timeout:
+                pass
 
     def __launch_svs_reg_forwarder(self):
-        self.stop_fwd = False
         self.fwd_server = threading.Thread(target=self.__forwarder_server)
         self.fwd_server.start()
+        self.fwd_server_stop = False
 
     def __process_svs_reg_success(self, sock, tp, length):
         reply = json.loads(sock.recv(length))
