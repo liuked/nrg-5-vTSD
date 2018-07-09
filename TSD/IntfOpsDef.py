@@ -192,7 +192,7 @@ class WiFiIntfOps(IntfOps):
                     dhcp-range={},{},{},24h""".format(interface, ip_str, dns_server, low_ip_str, high_ip_str, netmask_str).replace(" ", "").replace("\t", ""))
 
         #enable ip forwarding 
-        sh_ret = os.system("sysctl -w net.ipv4.conf.all.forwarding=1")
+        sh_ret = os.system("sysctl -wq net.ipv4.conf.all.forwarding=1")
         assert sh_ret==0
 
         #add MASQUERADE NAT rules to iptable

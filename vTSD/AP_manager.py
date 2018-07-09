@@ -5,7 +5,6 @@ import sys, os
 import json, struct
 
 sys.path.append(os.path.abspath(os.path.join("..")))
-
 from common.Def import MSG_HDR_LEN, MSGTYPE, INTFTYPE, NRG5_SSID_PREFIX
 
 
@@ -34,8 +33,8 @@ class Listener(object):
         msg = {"device_id": reg[u"device_id"]}
         msg_type = MSGTYPE.DEV_REG_SUCCESS if self.auth else MSGTYPE.DEV_REG_FAILED
         self.auth = not self.auth
-        if msg_type == MSG_TYPE.DEV_REG_SUCCESS:
-            msg["intfs"] = {}
+        if msg_type == MSGTYPE.DEV_REG_SUCCESS:
+            msg["intfs"] = []
             for intf in reg[u"intfs"]:
                 msg["intfs"].append({"type":intf[u"type"], "typename":intf[u"typename"], "name":intf[u"name"], "ssid": "{}{:0>6}".format(NRG5_SSID_PREFIX, self.ssid), "channel": 11})
         else:

@@ -12,6 +12,7 @@ from IntfOpsDef import WiFiIntfOps
 import time
 import logging
 
+logging.basicConfig(level=logging.INFO)
 
 def main(*args, **kwargs):
 

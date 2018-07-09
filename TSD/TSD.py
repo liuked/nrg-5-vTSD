@@ -183,6 +183,7 @@ class TSD(object):
             intf_ip, intf_netmask_len = self.__assign_ap_address()
             self.intf_mods[intf_type].open(interface=intf_name, ssid=intf_ssid, channel=intf_channel, ip=intf_ip, netmask_len=intf_netmask_len)
             self.active_intfs.append({"type":intf_type, "name":intf_name})
+            logging.info("DEV_REG_SUCCESS on interface {} and SSID is {}".format(intf_name, intf_ssid))
 
     def __process_dev_reg_failed(self, sock, tp, length):
         reply = json.loads(sock.recv(length))
