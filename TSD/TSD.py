@@ -354,8 +354,8 @@ class TSD(object):
             try:
                 cli_sock, addr = self.fwd_sock.accept()
                 cli_sock.setblocking(1)
-                loggin.info("forwarder: accept connection from {}".format(str(addr)))
-                threading.Thread(target=self.__forward_svs_reg, args = (sock, addr)).start()
+                logging.info("forwarder: accept connection from {}".format(str(addr)))
+                threading.Thread(target=self.__forward_svs_reg, args = (cli_sock, addr)).start()
             except socket.timeout:
                 pass
 

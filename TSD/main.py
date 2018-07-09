@@ -35,5 +35,7 @@ def main(*args, **kwargs):
     print raw_input("Enter any key to stop service")
     tsd.stop_service()
 
+    connector.disconnect()
+
 if __name__ == "__main__":
     main()
