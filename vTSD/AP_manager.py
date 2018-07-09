@@ -31,12 +31,18 @@ class Listener(object):
             self.createlog("Opening a threaded socket for client " + str(address))
 
     def __generate_device_reg_reply(self, reg):
-        msg = {"device_id": reg[u"device_id"], "reg_result": self.auth, "intfs":[]}
+        msg = {"device_id": reg[u"device_id"]}
+        msg_type = MSGTYPE.DEV_REG_SUCCESS if self.auth else MSGTYPE.DEV_REG_FAILED
         self.auth = not self.auth
-        for intf in reg[u"intfs"]:
-            msg["intfs"].append({"type":intf[u"type"], "typename":intf[u"typename"], "name":intf[u"name"], "ssid": "{}{:0>6}".format(NRG5_SSID_PREFIX, self.ssid), "channel": 11})
+        if msg_type == MSG_TYPE.DEV_REG_SUCCESS:
+            msg["intfs"] = {}
+            for intf in reg[u"intfs"]:
+                msg["intfs"].append({"type":intf[u"type"], "typename":intf[u"typename"], "name":intf[u"name"], "ssid": "{}{:0>6}".format(NRG5_SSID_PREFIX, self.ssid), "channel": 11})
+        else:
+            msg["error_type"] = 11
+            msg["error_msg"] = "unable to pass the authentication of vAAA" 
         msg = json.dumps(msg)
-        msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.DEV_REG_REPLY.value, len(msg), msg)
+        msg = struct.pack("!BH{}s".format(len(msg)), msg_type.value, len(msg), msg)
         self.ssid += 1
         return msg
                  

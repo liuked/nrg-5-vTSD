@@ -171,23 +171,23 @@ class TSD(object):
         tp, length = struct.unpack("!BH", msg_hdr)
         return MSGTYPE(tp), length
 
-    def __process_dev_reg_reply(self, sock, tp, length):
-        assert tp == MSGTYPE.DEV_REG_REPLY
+    def __process_dev_reg_success(self, sock, tp, length):
         reply = json.loads(sock.recv(length))
         assert reply[u"device_id"]==self.device_id
-        if reply[u"reg_result"]==True:
-            #open hotspot
-            for intf in reply[u"intfs"]:
-                intf_type = INTFTYPE(intf[u"type"])
-                intf_name = intf[u"name"].encode("utf-8")
-                intf_channel = intf[u"channel"]
-                intf_ssid = intf[u"ssid"].encode("utf-8")
-                intf_ip, intf_netmask_len = self.__assign_ap_address()
-                self.intf_mods[intf_type].open(interface=intf_name, ssid=intf_ssid, channel=intf_channel, ip=intf_ip, netmask_len=intf_netmask_len)
-                self.active_intfs.append({"type":intf_type, "name":intf_name})
-            return True
-        
-        return False
+        #open hotspot
+        for intf in reply[u"intfs"]:
+            intf_type = INTFTYPE(intf[u"type"])
+            intf_name = intf[u"name"].encode("utf-8")
+            intf_channel = intf[u"channel"]
+            intf_ssid = intf[u"ssid"].encode("utf-8")
+            intf_ip, intf_netmask_len = self.__assign_ap_address()
+            self.intf_mods[intf_type].open(interface=intf_name, ssid=intf_ssid, channel=intf_channel, ip=intf_ip, netmask_len=intf_netmask_len)
+            self.active_intfs.append({"type":intf_type, "name":intf_name})
+
+    def __process_dev_reg_failed(self, sock, tp, length):
+        reply = json.loads(sock.recv(length))
+        assert reply[u"device_id"]==self.device_id
+        logging.info("DEV_REG_FAILED({}): {}".format(reply["error_type"], reply["error_msg"]))
 
     def start_service(self):
         #connect to vTSD
@@ -199,8 +199,15 @@ class TSD(object):
     
         #recv registration reply from vTSD
         tp, length = self.__receive_msg_hdr(sock)
-        
-        ret = self.__process_dev_reg_reply(sock, tp, length)
+ 
+        if tp == MSGTYPE.DEV_REG_SUCCESS:
+            self.__process_dev_reg_success(sock, tp, length)
+            ret = True
+        elif tp == MSGTYPE.DEV_REG_FAILED:
+            self.__process_dev_reg_failed(sock, tp, length)
+            ret = False
+        else:
+            raise Exception, "received unknown message type during start_service()"
          
         #close the connection to vTSD   
         sock.close()
