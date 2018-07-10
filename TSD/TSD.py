@@ -282,7 +282,7 @@ class TSD(object):
         
         sh_ret, upstream_intf = cmds.getstatusoutput("ip route | grep default | awk -F\"dev \" '{print $2}' | awk '{print $1}'")
         assert sh_ret==0
-        sh_ret, upstream_intf_ip = cmds.getstatusoutput("ifconfig %s | grep \"inet \" | awk '{print $2}'" % upstream_intf)
+        sh_ret, upstream_intf_ip = cmds.getstatusoutput("ifconfig %s | grep inet | gawk --re-interval '{match($0,/([0-9]{1,3}\.){3}[0-9]{1,3}/,a) ;print a[0]}'" % upstream_intf)
         assert sh_ret==0
 
         if self.is_5g_gw:
@@ -389,7 +389,7 @@ class TSD(object):
         
         sh_ret, upstream_intf = cmds.getstatusoutput("ip route | grep default | awk -F\"dev \" '{print $2}' | awk '{print $1}'")
         assert sh_ret==0
-        sh_ret, upstream_intf_ip = cmds.getstatusoutput("ifconfig %s | grep \"inet \" | awk '{print $2}'" % upstream_intf)
+        sh_ret, upstream_intf_ip = cmds.getstatusoutput("ifconfig %s | grep inet | gawk --re-interval '{match($0,/([0-9]{1,3}\.){3}[0-9]{1,3}/,a) ;print a[0]}'" % upstream_intf)
         assert sh_ret==0
 
         if self.is_5g_gw:
