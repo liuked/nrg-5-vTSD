@@ -25,9 +25,10 @@ def main(*args, **kwargs):
 
     tsd = TSD(intfops=[WiFiIntfOps()])
 
-    s = Service(1, "Web", "Web", 8000, "tcp")
+    web = Service(1, "Web", "Web", 8000, "tcp")
+    ssh = Service(2, "SSH", "SSH", 22, "tcp")
     
-    while tsd.start_service([s]) == False:
+    while tsd.start_service([web, ssh]) == False:
         #retry after 3s
         logging.warning("Fail to become hotspot, will try again after 3s")
         time.sleep(3)
