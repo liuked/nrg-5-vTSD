@@ -49,7 +49,7 @@ class WiFiAutoConnector(AutoConnector):
 
     def disconnect(self):
         if self.interface:
-            assert os.system("ifdown {}".format(interface))
+            assert os.system("ifdown {}".format(self.interface))
 
     def try_to_connect(self):
 
