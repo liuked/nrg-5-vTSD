@@ -4,6 +4,7 @@
 import commands as cmds
 import os
 import sys
+import logging
 sys.path.append(os.path.abspath(os.path.join("..")))
 
 from common.Def import NRG5_SSID_PREFIX
@@ -94,6 +95,7 @@ class WiFiAutoConnector(AutoConnector):
             assert os.system("ifup {}".format(intf))==0
 
             self.interface = intf
+            logging.info("connect to {} via {}".format(ssid, intf))
 
         return ssid != None
 

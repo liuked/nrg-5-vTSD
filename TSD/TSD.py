@@ -192,9 +192,9 @@ class TSD(object):
         assert intf_type in INTFTYPE
         if intf_type not in self.intf_mods:
             self.intf_mods[intf_type] = module_ops
-            logging.info("TSD register the {} module".format(module_ops.intf_type_str))
+            logging.info("Register the {} module".format(module_ops.intf_type_str))
         else:
-            logging.warning("TSD try to register the {} module that was registered".format(module_ops.intf_type_str))
+            logging.warning("Try to register the {} module that was registered".format(module_ops.intf_type_str))
 
     def __connect_to_vTSD(self):
         """
@@ -299,6 +299,8 @@ class TSD(object):
         msg = json.dumps(msg)
         msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.SVS_REG.value, len(msg), msg)
         upstream_sock.send(msg)
+
+        logging.info("forwarder: forward message {} to {} via interface {}".format(str(msg), target_ip, upstream_intf))
         
         #wait SVS_REG_SUCCESS or SVS_REG_FAILED
         tp, length = self.__receive_msg_hdr(upstream_sock)
@@ -311,10 +313,15 @@ class TSD(object):
                         dnat_intf, msg["service_proto"], dnat_port, msg["dnat_chain"][-2]))==0
             del msg["dnat_chain"][-1]
 
+            logging.info("forwarder: install a DNAT rule: incoming(ip-{}, protocol-{}, port-{}, interface-{}), to({})".format(dnat_ip, 
+                        msg["service_proto"], dnat_port, dnat_intf, msg["dnat_chain"][-1]))
+
             #forward to downstream device
             msg = json.dumps(msg)
             msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.SVS_REG_SUCCESS.value, len(msg), msg)
             sock.send(msg)
+
+            logging.info("forwarder: forward SVS_REG_SUCCESS {} to downstream devices".format(str(msg)))
 
         elif tp == MSGTYPE.SVS_REG_FAILED:
             msg = json.loads(upstream_sock.recv(length))
@@ -327,6 +334,8 @@ class TSD(object):
             msg = json.dumps(msg)
             msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.SVS_REG_FAILED.value, len(msg), msg)
             sock.send(msg)
+
+            logging.info("forwarder: forward SVS_REG_FAILED {} to downstream devices".format(str(msg)))
         else:
             raise Exception, "received unknown message type from upstream device during __forwarder_process_svs_reg()"
 
@@ -349,12 +358,12 @@ class TSD(object):
         self.fwd_sock.bind(("", self.vTSD_port))
         self.fwd_sock.listen(10)
         self.fwd_sock.settimeout(5)
-        logging.info("service forwarder running on port {}".format(self.vTSD_port))
+        logging.info("Service forwarder running on port {}".format(self.vTSD_port))
         while not self.fwd_server_stop:
             try:
                 cli_sock, addr = self.fwd_sock.accept()
                 cli_sock.setblocking(1)
-                logging.info("forwarder: accept connection from {}".format(str(addr)))
+                logging.info("Forwarder: accept connection from {}".format(str(addr)))
                 threading.Thread(target=self.__forward_svs_reg, args = (cli_sock, addr)).start()
             except socket.timeout:
                 pass
