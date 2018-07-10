@@ -53,7 +53,7 @@ class WiFiAutoConnector(AutoConnector):
 
     def try_to_connect(self):
 
-        sh_ret, intf_list = cmds.getstatusoutput("ip address | grep wlan | grep -v UP | gawk --re-interval '{match($0,/[^ ]*wlan[0-9]+/,a) ;print a[0]}'")
+        sh_ret, intf_list = cmds.getstatusoutput("ip link | grep wlan | grep -v UP | gawk --re-interval '{match($0,/[^ ]*wlan[0-9]+/,a) ;print a[0]}'")
         assert sh_ret==0
         
         if intf_list == "":

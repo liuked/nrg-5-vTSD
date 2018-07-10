@@ -46,7 +46,7 @@ class WiFiIntfOps(IntfOps):
         Description: select one spare WiFi interface, and 
         Return: (intf_name, nrg5_ap_info_list, radio_resource_usages) or None
         """
-        sh_ret, intf_list = cmds.getstatusoutput("ip address | grep wlan | grep -v UP | gawk --re-interval '{match($0,/[^ ]*wlan[0-9]+/,a) ;print a[0]}'")
+        sh_ret, intf_list = cmds.getstatusoutput("ip link | grep wlan | grep -v UP | gawk --re-interval '{match($0,/[^ ]*wlan[0-9]+/,a) ;print a[0]}'")
         assert sh_ret==0
         if intf_list == "":
             return None
