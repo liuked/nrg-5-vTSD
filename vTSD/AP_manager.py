@@ -5,16 +5,17 @@ import sys, os
 import json, struct
 
 sys.path.append(os.path.abspath(os.path.join("..")))
-
-from common.Def import MSG_HDR_LEN, MSGTYPE, INTFTYPE
+from common.Def import MSG_HDR_LEN, MSGTYPE, INTFTYPE, NRG5_SSID_PREFIX
 
 from optparse import OptionParser
 
 class Listener(object):
 
     def __init__(self, host, port):
+        self.ssid = 0
         self.host = host
         self.port = port
+        self.auth = False
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind((self.host, self.port))
@@ -30,11 +31,19 @@ class Listener(object):
             self.createlog("Opening a threaded socket for client " + str(address))
 
     def __generate_device_reg_reply(self, reg):
-        msg = {"device_id": reg[u"device_id"], "reg_result": True, "intfs":[]}
-        for intf in reg[u"intfs"]:
-            msg["intfs"].append({"type":intf[u"type"], "typename":intf[u"typename"], "name":intf[u"name"], "ssid": "nrg-5-0000000", "channel": 11})
+        msg = {"device_id": reg[u"device_id"]}
+        msg_type = MSGTYPE.DEV_REG_SUCCESS if self.auth else MSGTYPE.DEV_REG_FAILED
+        self.auth = not self.auth
+        if msg_type == MSGTYPE.DEV_REG_SUCCESS:
+            msg["intfs"] = []
+            for intf in reg[u"intfs"]:
+                msg["intfs"].append({"type":intf[u"type"], "typename":intf[u"typename"], "name":intf[u"name"], "ssid": "{}{:0>6}".format(NRG5_SSID_PREFIX, self.ssid), "channel": 11})
+        else:
+            msg["error_type"] = 11
+            msg["error_msg"] = "unable to pass the authentication of vAAA" 
         msg = json.dumps(msg)
-        msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.DEV_REG_REPLY.value, len(msg), msg)
+        msg = struct.pack("!BH{}s".format(len(msg)), msg_type.value, len(msg), msg)
+        self.ssid += 1
         return msg
                  
     def __receive_msg_hdr(self, sock):
@@ -51,13 +60,27 @@ class Listener(object):
         msg = self.__generate_device_reg_reply(reg)
         return msg
 
+    def __process_svs_reg(self, sock, tp, length):
+        data = sock.recv(length)
+        reg = json.loads(data)
+        del reg["credential"]
+        msg = json.dumps(reg)
+        msg = struct.pack("!BH{}s".format(len(msg)), MSGTYPE.SVS_REG_SUCCESS.value, len(msg), msg)
+        return msg
+
     def listenToClient(self, client, address):
         size = 1024
         while True:
             try:
                 data = self.__receive_msg_hdr(client)
                 if data:
-                    response = self.__process_dev_reg(client, data[0], data[1])
+                    tp, length = data
+                    if tp == MSGTYPE.DEV_REG:
+                        response = self.__process_dev_reg(client, tp, length)
+                    elif tp == MSGTYPE.SVS_REG:
+                        response = self.__process_svs_reg(client, tp, length)
+                    else:
+                        logging.error("unknown message")
                     client.send(response)
                     self.createlog("Replying to " + str(address) + " with " + str(response))
                 else:
@@ -92,8 +115,4 @@ if __name__ == "__main__":
             exit(1)
 
     Listener('',port_num).listen()
-
-
-
-
 
